@@ -1,0 +1,35 @@
+td.glass:hover{
+	background-color:#CCCC00; 
+	cursor: pointer;
+}
+
+.class td{
+  height:80px;
+}
+
+th {
+  font-size:1.1em;
+  text-align:middle;
+  padding-top:5px;
+  padding-bottom:4px;
+  background-color:#A7C942;
+  color:#ffffff;
+}
+
+td.open {
+	background-color:#EAF2D3;
+}
+
+td.wait {
+  background-image: url('/img/wait.gif');
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-color: #c0ffff;
+}
+
+.footer {
+padding: 70px 0;
+margin-top: 70px;
+border-top: 1px solid #E5E5E5;
+background-color: whiteSmoke;
+}

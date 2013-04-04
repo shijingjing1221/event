@@ -10,5 +10,9 @@ lib-cov
 pids
 logs
 results
+uploads
+config.js
 
 npm-debug.log
+node_modules
+public/images

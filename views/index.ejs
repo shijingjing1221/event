@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>{%= title %}</title>
+    <link href="/stylesheets/bootstrap.min.css" rel="stylesheet">
+    <link href="/stylesheets/style.css" rel="stylesheet">
+    <link href="/stylesheets/english_class.css" rel="stylesheet">
+
+    <!--[if lt IE 9]>
+    <script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <script type="text/javascript" src="/javascripts/json2.js"></script>
+    <script type="text/javascript" src="/javascripts/jquery-1.7.1.min.js"></script>
+    <script type="text/javascript" src="/javascripts/date.js"></script>
+    <script type="text/javascript" src="/javascripts/bootstrap.min.js"></script>
+    <script type="text/javascript" src="/javascripts/underscore-min.js"></script>
+    <script type="text/javascript" src="/javascripts/backbone-min.js"></script>
+    <script type="text/javascript" src="/javascripts/jquery.cookie.js"></script>
+
+    <!-- app start -->
+    <script type="text/javascript">
+        $(function(){
+            // utils
+            function IsInClass(student, glass){
+              var students  = glass.get('students');
+              for(var i in students){
+                if(students[i].userId == student.userId)
+                    return true;
+              }
+
+              return false;
+            }
+
+            function removeStudent(student, glass){
+              var temp = [];
+              var students = glass.get('students');
+              for(var i in students){
+                if(students[i].userId != student.userId)
+                  temp.push(students[i]);
+              }
+
+              glass.set('students', temp);
+            }
+
+            // backbone
+            App = window.App || {};
+            App.Model = window.App.Model || {};
+            App.Collection = window.App.Collection || {};
+            App.View =  window.App.View || {};
+
+            App.Model.Session = Backbone.Model.extend({
+                urlRoot: '/api/sessions',
+                auth: false // default
+            });
+                    
+            App.Model.Class = Backbone.Model.extend({
+              idAttribute: '_id',
+              urlRoot: '/api/classes'
+            });
+
+            App.Collection.Classes = Backbone.Collection.extend({
+              model: App.Model.Class,
+              url: '/api/classes'
+            });
+
+            var classList = new App.Collection.Classes();
+
+            App.View.LoginBlock = Backbone.View.extend({
+                template: $('#tpl-session-login-small').html(),
+                emailError: false,
+                passwordError: false,
+
+                events: {
+                    //"click #btnLogin"   :       "login",
+                    "click #btnLogout"  :       "logout",
+                    "keypress #input-email" :      "hideEmailError",
+                    "keypress #input-password" :    "hidePasswordError"
+                },
+
+                initialize: function() {
+                    var that = this;
+                    this.template = _.template(this.template);
+                    this.model.on('change:auth', function(){
+                        that.render();
+                    });
+                },
+
+                render: function() {
+                    $(this.el).html(this.template(this.model.toJSON()));
+                    return this;
+                },
+
+                login: function() {
+                    var that = this;
+                    var creds = $('#loginForm').serializeObject();
+                    that.model.save(creds, {
+                        success: function(model, resp) {
+                            that.model = model;
+                        },
+                        error: function(model, resp){
+                            //that.model.clear({silent:true});
+                            var message = eval('(' + resp.responseText + ')').message;
+                            if(message.indexOf('password') >= 0){
+                                that.passwordError = true;
+                                $('#input-password').popover({placement: 'right', title: message});
+                                $('#input-password').popover('show');
+                                $('#input-password').focus();
+                            }else{
+                                that.emailError = true;
+                                $('#input-email').popover({placement: 'right', title: message});
+                                $('#input-email').popover('show');
+                                $('#input-email').focus();
+                            }
+                        }
+                    });
+
+                    return false;
+                },
+
+                logout: function() {
+                    var that = this;
+
+                    that.model.destroy({
+                        success: function(model, resp) {
+                            that.model.clear({silent:true});
+                            that.model.set('auth', false);
+                        },
+                        error: function(model, resp) {
+                        }
+                    });
+                },
+
+                hideEmailError: function() {
+                    if(this.emailError) {
+                        $('#input-email').popover('destroy');
+                        this.emailError = false;
+                    }
+                },
+
+                hidePasswordError: function() {
+                    if(this.passwordError) {
+                        $('#input-password').popover('destroy');
+                        this.passwordError = false;
+                    }
+                }
+            });
+
+            App.View.MainView = Backbone.View.extend({
+              template: _.template($('#classes-template').html()),
+              events: {
+                "click td":       "joinOrLeaveClass",
+                "click button#btn-save" : "updateClassTitles"
+              },
+            
+              joinOrLeaveClass: function(e){
+                var that = this;
+                if(!session.get('auth')) return false;
+
+                var student = {userId: session.get('user')._id, name: session.get('user').name};
+                var element;
+                if(e.target.nodeName == "TD"){
+                    element = $(e.target);
+                }else{
+                    element = $(e.target).parent();
+                }
+                
+                var glass = this.model.get(element.attr('id'));
+
+                // if class is closed, reject
+                var startTimeString = glass.get('start').replace(/-/g, "/").replace('T', " ").split('.')[0];
+                var start = new Date(startTimeString).addHours(8);
+                var now = Date.today().setTimeToNow();
+                if(now.compareTo(start) == 1) return;
+
+                // change class
+                element.addClass('wait');
+
+                glass.save({action: 'joinOrLeaveClass'}, { 
+                  success: function(model, resp){
+                    that.render();
+                  },
+                  error: function(model, resp){
+                    element.removeClass('wait');
+                    alert('failed: ' + resp.responseText);
+                    glass.fetch({
+                      success: function(model, resp){
+                        that.render();
+                      },
+                      error: function(model, resp){
+                        alert('update error, contact system admin!');
+                      }
+                    });
+                  }
+                });
+              },
+
+              updateClassTitles : function() {
+                var titles = [$('#monClass').val(), 
+                                $('#tueClass').val(),
+                                $('#wedClass').val(),
+                                $('#thurClass').val(),
+                                $('#friClass').val()];
+
+
+                this.model.each(function(glass){
+                    var weekday = new Date(glass.get('start')).getDay();
+                    glass.save({title: titles[weekday - 1]});
+                });
+              },
+
+              render:function(){
+                //TODO: this is so ugly
+                var openClassesCount = 0;
+                var closeClassesCount = 0;
+                var totalClassesCount = 0;
+
+                $(this.el).html(this.template({startofWeek: startofWeek, endofWeek: endofWeek, offWeek: offWeek}));
+
+                // table
+                this.model.each(function(glass){
+                  totalClassesCount++;
+                  if(glass.get('students') && glass.get('students').length > 1 ){
+                    openClassesCount++;
+                  }else{
+                    closeClassesCount++;
+                  }
+
+                  var startTimeString = glass.get('start').replace(/-/g, "/").replace('T', " ").split('.')[0];
+                  var endTimeString = glass.get('end').replace(/-/g, "/").replace('T', " ").split('.')[0];
+                  var start = new Date(startTimeString).getHours() - 4;
+                  var end = new Date(endTimeString).getHours() - 4;
+                  var weekday = new Date(startTimeString).getDay();
+                  var temp = [1000, 1000, 1000, 1000, 0, 1, 1000, 2, 3, 1000, 4, 5];
+                  var classno = temp[start+end];
+
+                  var box = $('tbody tr:eq(' + classno + ') td:eq(' + weekday + ')');
+                  box.attr('id', glass.get('_id'));
+                  var students = glass.get('students');
+                  for(var i in students){
+                    box.append('<span class="badge badge-info">' + students[i].name + '</span><br>');
+                  }
+                  if(students.length > 1){
+                    box.addClass('open');
+                  }
+                  $('th:eq(' + weekday + ') small').html(glass.get('title'));
+                });
+                
+                $('#open_pct').html(formatNumber(openClassesCount/(totalClassesCount-10)*100, 0) + '%');
+                $('#close_pct').html(formatNumber((closeClassesCount-10)/(totalClassesCount-10)*100, 0) + '%');
+
+                return this;
+              }
+            });
+
+            var mainView = new App.View.MainView({model: classList, el: $('#main')});
+            var startofWeek, endofWeek, offWeek;
+
+            App.Router = Backbone.Router.extend({
+                routes: {
+                    ''                          :   'index',
+                    'showClasses/:off'          :   'showClasses',
+                    'editClass'                 :   'editClass',
+                    'access_token=:access_token':   'loginWithOAuth'
+                },
+
+                index: function(){
+                    this.showClasses(0);
+                },
+
+                showClasses: function(off){
+                    offWeek = off;
+                    startofWeek = Date.today().addWeeks(off-1).monday();
+                    endofWeek = Date.today().addWeeks(off).saturday();
+                    classList.fetch({
+                        data: {start: startofWeek.toString('yyyy-MM-dd'), end: endofWeek.toString('yyyy-MM-dd')},
+                        success: function(model, response){
+                            mainView.render();
+                        }
+                    });
+                },
+
+                editClass: function() {
+                    router.navigate('');
+                    $('#class-editor').modal('show');
+                },
+
+                loginWithOAuth: function(access_token) {
+                    var that = this;
+                    App.session.save({access_token: access_token}, {
+                        success: function(model, resp) {
+                            that.model = model;
+                        },
+                        error: function(model, resp){
+
+                        }                        
+                    });
+                }
+            });
+
+            // app start
+            var session = App.session = new App.Model.Session({auth: false});
+
+            // init with server session info
+            {% if(locals.user) { %}
+
+                var user = {};
+                user.name = '{%= locals.user.name %}';
+                user._id = '{%= locals.user.id %}';
+                user.email = '{%= locals.user.email %}';
+                user.roles = [];
+                {% for(i = 0; i < locals.user.roles.length; ++i){ %}
+                    user.roles.push('{%= locals.user.roles[i] %}');
+                {% } %} 
+
+                session.set('auth', true);
+                session.set('id', '12345678');
+                session.set('user', user);
+
+            {% } %}
+
+            new App.View.LoginBlock({model: session, el: $('#login-panel')}).render();
+
+            var router = new App.Router();
+            Backbone.history.start();
+
+        });
+    </script>
+  </head>
+
+  <body style="padding-top: 90px;">
+    <div class="container">
+        <div class="row">
+            <h2 class="span9">Welcome to English Communication Class(1633)</h2>
+            <div id="login-panel" class="span3"></div>
+        </div>
+        <div id="main"></div>
+        <div class="row">
+            <div class="span3"><em>What does the color mean? </em></div>
+            <div class="span3">
+                <table class="table table-bordered">
+                    <tr>
+                        <td class="open">Class is open</td>
+                        <td>Class is closed</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        <div class="row">
+            <div class="span3"><em>Class active & inactive </em></div>
+            <div class="span3">
+                <table class="table table-bordered">
+                    <tr>
+                        <td class="open">4 max</td>
+                        <td>less than 2</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        <div class="row">
+            <div class="span3"><em>Statistics of this week </em></div>
+            <div class="span3">
+                <table class="table table-bordered">
+                    <tr>
+                        <td class="open" id="open_pct"></td>
+                        <td id="close_pct"></td>
+                    </tr>
+                </table>
+            </div>
+        </div>              
+    </div>
+
+
+    <footer class="footer">
+      <div class="container">
+        <p>Designed and built with all the love in the world by <a href="https://myhome.microstrategy.com/Person.aspx?guid=B4B6FD09-1DF3-4AA2-85FC-DA1DE77B19AC" target="_blank">Wang, Junhua</a> and <a href="https://myhome.microstrategy.com/Person.aspx?guid=F26AEAC7-E6C7-46A0-8AD0-9704D858A3C1" target="_blank">Corey</a>.</p>
+      </div>
+    </footer>
+  </body>
+
+  <script type="text/template" id="classes-template">
+    <a class='btn' href="#showClasses/<%=new Number(offWeek) - 1%>"><i class="icon-backward"></i></a>
+    <span><%= startofWeek.toString('yyyy-MM-dd') %> ~ <%= endofWeek.toString('yyyy-MM-dd') %></span>
+    <a class='btn' href="#showClasses/<%=new Number(offWeek) + 1%>"><i class="icon-forward"></i></a>
+    <table class="table table-bordered class">
+        <thead>
+            <tr>
+                <th width="80px">Section Time</th>
+                <th class="span2">Monday<br><em><small>England culture<small></em></th>
+                <th class="span2">Tuesday<br><em><small>England culture<small></em></th>
+                <th class="span2">Wednesday<br><em><small>England culture<small></em></th>
+                <th class="span2">Thursday<br><em><small>England culture<small></em></th>
+                <th class="span2">Friday<br><em><small>England culture<small></em></th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr style="display:none">
+                <td class="open">2:00 - 2:30</td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+            </tr>   
+            <tr style="display:none">
+                <td class="open">2:30 - 3:00</td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+            </tr>   
+            <tr>
+                <td class="open">3:30 - 4:00</td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+            </tr>   
+            <tr>
+                <td class="open">4:00 - 4:30</td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+            </tr>
+            <tr>
+                <td class="open">5:00 - 5:30</td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+            </tr>
+            <tr>
+                <td class="open">5:30 - 6:00</td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+                <td class="glass"></td>
+            </tr>
+        </tbody>
+        <tfoot></tfoot>
+    </table>
+    <div class="modal hide fade" id="class-editor" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+            <h3>Update Class Titles</h3>
+          </div>
+          <div class="modal-body">
+            <form class="form-horizontal">
+              <div class="control-group">
+                <label class="control-label" for="monClass">Monday</label>
+                <div class="controls">
+                  <input type="text" id="monClass" placeholder="Class Title">
+                </div>
+              </div>
+              <div class="control-group">
+                <label class="control-label" for="tueClass">Tuesday</label>
+                <div class="controls">
+                  <input type="text" id="tueClass" placeholder="Class Title">
+                </div>
+              </div>
+              <div class="control-group">
+                <label class="control-label" for="wedClass">Wednesday</label>
+                <div class="controls">
+                  <input type="text" id="wedClass" placeholder="Class Title">
+                </div>
+              </div>
+              <div class="control-group">
+                <label class="control-label" for="thurClass">Thursday</label>
+                <div class="controls">
+                  <input type="text" id="thurClass" placeholder="Class Title">
+                </div>
+              </div>
+              <div class="control-group">
+                <label class="control-label" for="friClass">Friday</label>
+                <div class="controls">
+                  <input type="text" id="friClass" placeholder="Class Title">
+                </div>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button class="btn" id="btn-cancel" data-dismiss="modal" aria-hidden="true">Close</button>
+            <button class="btn btn-primary" id="btn-save" data-dismiss="modal" aria-hidden="true">Save changes</button>
+          </div>
+    </div>
+  </script>
+
+  <script type="text/template" id="tpl-session-login-small">
+    <% if(auth){ %>
+    <div class="well">
+        <p>欢迎你: <%= user.name %></p>
+        <button type="submit" class="btn btn-info btn-small" id="btnLogout">登出</button>
+        <% if(user.email == 'cgordon@microstrategy.com') { %>
+        <a type="button" class="btn btn-info btn-small" href="#editClass">EditClass</a>
+        <a type="button" class="btn btn-info btn-small" href="#report">Report</a>
+        <% } %>
+    </div>
+    <% }else{ %>
+    <div class='login'>
+        <div class="center">
+            <div class="cont clr">
+                <form id="loginForm">
+                    <div class="input-prepend">
+                        <span class="add-on"><i class="icon-user"></i></span><input type="text" class="input-medium" placeholder="Email" name="email" id="input-email">
+                    </div>
+                    <div class="input-prepend">
+                        <span class="add-on"><i class="icon-lock"></i></span><input type="password" class="input-medium" placeholder="Password" name="password" id="input-password">
+                    </div>
+                    <button type="submit" class="btn btn-info btn-small" id="btnLogin">登录</button>
+                    <a type="button" href="http://account.36node.com:3000/oauth/authorize?client_id=1&redirect_uri=http://event.mstr.36node.com:3001/&response_type=token" class="btn btn-info btn-small" id="btnLogin">OAuth Login</a>
+                </form>
+            </div>
+        </div>
+    </div>
+    <% } %>
+  </script>
+</html>
