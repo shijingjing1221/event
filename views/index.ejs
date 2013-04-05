@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <title>{%= title %}</title>
+    <title>Microstrategy English Class</title>
     <link href="/stylesheets/bootstrap.min.css" rel="stylesheet">
     <link href="/stylesheets/style.css" rel="stylesheet">
     <link href="/stylesheets/english_class.css" rel="stylesheet">
@@ -16,6 +16,7 @@
     <script type="text/javascript" src="/javascripts/underscore-min.js"></script>
     <script type="text/javascript" src="/javascripts/backbone-min.js"></script>
     <script type="text/javascript" src="/javascripts/jquery.cookie.js"></script>
+    <script type="text/javascript" src="/javascripts/36node.js"></script>
 
     <!-- app start -->
     <script type="text/javascript">
@@ -48,11 +49,6 @@
             App.Collection = window.App.Collection || {};
             App.View =  window.App.View || {};
 
-            App.Model.Session = Backbone.Model.extend({
-                urlRoot: '/api/sessions',
-                auth: false // default
-            });
-                    
             App.Model.Class = Backbone.Model.extend({
               idAttribute: '_id',
               urlRoot: '/api/classes'
@@ -154,9 +150,9 @@
             
               joinOrLeaveClass: function(e){
                 var that = this;
-                if(!session.get('auth')) return false;
+                if(!App.session.get('auth')) return false;
 
-                var student = {userId: session.get('user')._id, name: session.get('user').name};
+                var student = {userId: App.session.get('user')._id, name: App.session.get('user').name};
                 var element;
                 if(e.target.nodeName == "TD"){
                     element = $(e.target);
@@ -289,6 +285,7 @@
                     App.session.save({access_token: access_token}, {
                         success: function(model, resp) {
                             that.model = model;
+                            that.navigate('#', true);
                         },
                         error: function(model, resp){
 
@@ -297,32 +294,94 @@
                 }
             });
 
-            // app start
-            var session = App.session = new App.Model.Session({auth: false});
-
-            // init with server session info
-            {% if(locals.user) { %}
-
-                var user = {};
-                user.name = '{%= locals.user.name %}';
-                user._id = '{%= locals.user.id %}';
-                user.email = '{%= locals.user.email %}';
-                user.roles = [];
-                {% for(i = 0; i < locals.user.roles.length; ++i){ %}
-                    user.roles.push('{%= locals.user.roles[i] %}');
-                {% } %} 
-
-                session.set('auth', true);
-                session.set('id', '12345678');
-                session.set('user', user);
-
-            {% } %}
-
-            new App.View.LoginBlock({model: session, el: $('#login-panel')}).render();
+            new App.View.LoginBlock({model: App.session, el: $('#login-panel')}).render();
 
             var router = new App.Router();
             Backbone.history.start();
 
+            // Utils
+            // $.ajaxSetup({cache:false});
+            $.fn.serializeObject = function() {
+              var o = {};
+              var a = this.serializeArray();
+              $.each(a, function() {
+                if(o[this.name] !== undefined) {
+                  if(!o[this.name].push) {
+                    o[this.name] = [o[this.name]];
+                  }
+                  o[this.name].push(this.value || '');
+                } else {
+                  o[this.name] = this.value || '';
+                }
+              });
+              return o;
+            }
+
+            function formatDate(date, friendly) {
+              var year = date.getFullYear();
+              var month = date.getMonth() + 1;
+              var day = date.getDate();
+              var hour = date.getHours();
+              var minute = date.getMinutes();
+              var second = date.getSeconds();
+
+              if(friendly) {
+                var now = new Date();
+                var mseconds = -(date.getTime() - now.getTime());
+                var time_std = [1000, 60 * 1000, 60 * 60 * 1000, 24 * 60 * 60 * 1000];
+                if(mseconds < time_std[3]) {
+                  if(mseconds > 0 && mseconds < time_std[1]) {
+                    return Math.floor(mseconds / time_std[0]).toString() + ' 秒前';
+                  }
+                  if(mseconds > time_std[1] && mseconds < time_std[2]) {
+                    return Math.floor(mseconds / time_std[1]).toString() + ' 分钟前';
+                  }
+                  if(mseconds > time_std[2]) {
+                    return Math.floor(mseconds / time_std[2]).toString() + ' 小时前';
+                  }
+                }
+              }
+
+              month = ((month < 10) ? '0' : '') + month;
+              day = ((day < 10) ? '0' : '') + day;
+              hour = ((hour < 10) ? '0' : '') + hour;
+              minute = ((minute < 10) ? '0' : '') + minute;
+              second = ((second < 10) ? '0' : '') + second;
+
+              return year + '-' + month + '-' + day + ' ' + hour + ':' + minute;
+            }
+
+            function formatNumber(number, decimals, dec_point, thousands_sep) {
+
+              number = (number + '').replace(/[^0-9+-Ee.]/g, '');
+              var n = !isFinite(+number) ? 0 : +number,
+                prec = !isFinite(+decimals) ? 0 : Math.abs(decimals),
+                sep = (typeof thousands_sep === 'undefined') ? ',' : thousands_sep,
+                dec = (typeof dec_point === 'undefined') ? '.' : dec_point,
+                s = '',
+                toFixedFix = function(n, prec) {
+                  var k = Math.pow(10, prec);
+                  return '' + Math.round(n * k) / k;
+                };
+              // Fix for IE parseFloat(0.55).toFixed(0) = 0;
+              s = (prec ? toFixedFix(n, prec) : '' + Math.round(n)).split('.');
+              if(s[0].length > 3) {
+                s[0] = s[0].replace(/B(?=(?:d{3})+(?!d))/g, sep);
+              }
+              if((s[1] || '').length < prec) {
+                s[1] = s[1] || '';
+                s[1] += new Array(prec - s[1].length + 1).join('0');
+              }
+              return s.join(dec);
+            }
+
+            function roleCheck(roleName, roles) {
+              for(var i in roles) {
+                if(roleName == roles[i]) return true;
+              }
+
+              return false;
+            }
         });
     </script>
   </head>
@@ -376,6 +435,9 @@
       </div>
     </footer>
   </body>
+
+    <!-- json data -->
+    {% include json_session.ejs %}
 
   <script type="text/template" id="classes-template">
     <a class='btn' href="#showClasses/<%=new Number(offWeek) - 1%>"><i class="icon-backward"></i></a>
@@ -512,7 +574,7 @@
                         <span class="add-on"><i class="icon-lock"></i></span><input type="password" class="input-medium" placeholder="Password" name="password" id="input-password">
                     </div>
                     <button type="submit" class="btn btn-info btn-small" id="btnLogin">登录</button>
-                    <a type="button" href="http://account.36node.com:3000/oauth/authorize?client_id=1&redirect_uri=http://event.mstr.36node.com:3001/&response_type=token" class="btn btn-info btn-small" id="btnLogin">OAuth Login</a>
+                    <a type="button" href="http://account.36node.com:3000/oauth/authorize?client_id=1&redirect_uri=http://localhost:3100" class="btn btn-info btn-small" id="btnLogin">OAuth Login</a>
                 </form>
             </div>
         </div>

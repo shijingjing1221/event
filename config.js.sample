@@ -1,0 +1,6 @@
+var config = {
+	site_port: 3100
+	, uploadDir : './uploads'
+}
+
+module.exports = config;
