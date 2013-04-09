@@ -13,7 +13,7 @@ var app = express();
 
 // Database
 var mongoose = require('mongoose');
-mongoose.connect('mongodb://localhost/36node');
+mongoose.connect('mongodb://localhost/event');
 
 var ejs = require('ejs');
 ejs.open = '{%';
