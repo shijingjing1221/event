@@ -1,5 +1,5 @@
 var Class = require('../models/class.js')
-	, mongoose = require('mongoose'),
+	, mongoose = require('mongoose')
 	, outLookServiceClient = require('../lib/outLookServiceClient');
 
 
