@@ -1,5 +1,6 @@
 var Class = require('../models/class.js')
-	, mongoose = require('mongoose');
+	, mongoose = require('mongoose'),
+	, outLookServiceClient = require('../lib/outLookServiceClient');
 
 
 /**
@@ -75,10 +76,16 @@ exports.updateClass = function(req, res){
 			if(isInClass(req.session.user._id, glass)){
 				console.log('leave class');
 				removeStudent(req.session.user._id, glass);
+				outLookServiceClient.cancelEvent(req.session.user, glass, function(outlookServer_res){
+					console.log('cancel outlook event: ' + outlookServer_res);
+				});
 			} else {
 				if(glass.students.length >= 4) return res.send(404, {message: 'This class is full!'});
 				console.log('join class');
 				glass.students.push({userId: req.session.user._id, name: req.session.user.name});
+				outLookServiceClient.setupEvent(req.session.user, glass, function(outlookServer_res){
+					console.log('setup outlook event: ' + outlookServer_res);
+				});
 			}
 		}
 
